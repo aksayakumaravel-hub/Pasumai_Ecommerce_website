@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Minus, Plus, Trash2, ShoppingBag, ArrowLeft, Leaf } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Minus, Plus, Trash2, ShoppingBag, ArrowLeft, Leaf, CreditCard, Loader2, CheckCircle } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { loadRazorpayScript, createRazorpayOrder, verifyAndUpdatePayment } from '../lib/razorpay';
 import UpiQrCode from '../components/UpiQrCode';
 
 type CartPageProps = {
@@ -13,16 +14,28 @@ type CheckoutStep = 'cart' | 'details' | 'payment' | 'success';
 
 export default function CartPage({ onNavigate }: CartPageProps) {
   const { items, removeItem, updateQuantity, clearCart, total } = useCart();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [step, setStep] = useState<CheckoutStep>('cart');
   const [loading, setLoading] = useState(false);
   const [orderId, setOrderId] = useState('');
+  const [fullOrderId, setFullOrderId] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
   const [form, setForm] = useState({
-    name: '',
-    phone: '',
+    name: profile?.full_name || '',
+    phone: profile?.phone || '',
     address: '',
     notes: '',
   });
+
+  useEffect(() => {
+    if (profile) {
+      setForm(f => ({
+        ...f,
+        name: f.name || profile.full_name || '',
+        phone: f.phone || profile.phone || '',
+      }));
+    }
+  }, [profile]);
 
   const deliveryFee = total < 500 ? 50 : 0;
   const grandTotal = total + deliveryFee;
@@ -39,7 +52,7 @@ export default function CartPage({ onNavigate }: CartPageProps) {
         .insert({
           user_id: user.id,
           total_amount: grandTotal,
-          payment_method: 'upi',
+          payment_method: 'razorpay',
           payment_status: 'pending',
           delivery_name: form.name,
           delivery_phone: form.phone,
@@ -62,25 +75,7 @@ export default function CartPage({ onNavigate }: CartPageProps) {
         }))
       );
 
-      // Reduce stock for each product atomically
-      await Promise.all(
-        items.map(item =>
-          supabase.rpc('reduce_product_stock', {
-            p_product_id: item.product.id,
-            p_quantity: item.quantity,
-          })
-        )
-      );
-
-      await supabase.from('notifications').insert({
-        user_id: user.id,
-        title: 'Order Placed Successfully!',
-        message: `Your order #${order.id.slice(0, 8)} has been placed. Total: ₹${grandTotal}. Please complete UPI payment to confirm dispatch.`,
-        type: 'success',
-        reference_id: order.id,
-        reference_type: 'order',
-      });
-
+      setFullOrderId(order.id);
       setOrderId(order.id.slice(0, 8).toUpperCase());
       setStep('payment');
     } catch (err) {
@@ -91,7 +86,104 @@ export default function CartPage({ onNavigate }: CartPageProps) {
     }
   };
 
-  const handlePaymentDone = async () => {
+  const handleRazorpayPayment = async () => {
+    if (!user || !fullOrderId) return;
+
+    setPaymentStatus('processing');
+
+    const scriptLoaded = await loadRazorpayScript();
+    if (!scriptLoaded) {
+      setPaymentStatus('failed');
+      alert('Failed to load payment gateway. Please try again.');
+      return;
+    }
+
+    try {
+      // Create Razorpay order
+      const orderData = await createRazorpayOrder({
+        amount: grandTotal,
+        type: 'order',
+        recordId: fullOrderId,
+      });
+
+      // Open Razorpay checkout
+      const options = {
+        key: orderData.razorpayKey,
+        amount: orderData.amount,
+        currency: orderData.currency || 'INR',
+        name: 'Pasumai Integrated Farm',
+        description: `Order #${orderId} - Organic Products`,
+        order_id: orderData.razorpayOrderId,
+        handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
+          // Verify payment
+          const result = await verifyAndUpdatePayment(
+            response.razorpay_order_id,
+            response.razorpay_payment_id,
+            response.razorpay_signature,
+            'order',
+            fullOrderId,
+            grandTotal
+          );
+
+          if (result.success) {
+            setPaymentStatus('success');
+            clearCart();
+            setTimeout(() => setStep('success'), 1500);
+          } else {
+            setPaymentStatus('failed');
+            alert(result.error || 'Payment verification failed');
+          }
+        },
+        prefill: {
+          name: form.name,
+          email: user.email,
+          contact: form.phone,
+        },
+        theme: {
+          color: '#15803d',
+        },
+        method: {
+          upi: true,
+          card: true,
+          netbanking: true,
+          wallet: true,
+          emi: true,
+        },
+        modal: {
+          ondismiss: () => {
+            setPaymentStatus('idle');
+          },
+        },
+      };
+
+      // @ts-expect-error - Razorpay is loaded dynamically
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (err) {
+      setPaymentStatus('failed');
+      console.error('Payment error:', err);
+      alert(err instanceof Error ? err.message : 'Payment failed. Please try again.');
+    }
+  };
+
+  const handleManualPayment = async () => {
+    // Fallback: mark as paid manually after UPI QR scan
+    if (!user || !fullOrderId) return;
+
+    await supabase.from('orders').update({
+      payment_status: 'paid',
+      status: 'confirmed',
+    }).eq('id', fullOrderId);
+
+    await supabase.from('notifications').insert({
+      user_id: user.id,
+      title: 'Payment Received!',
+      message: `Payment for order #${orderId} has been confirmed. We'll dispatch your order soon.`,
+      type: 'success',
+      reference_id: fullOrderId,
+      reference_type: 'order',
+    });
+
     clearCart();
     setStep('success');
   };
@@ -100,15 +192,21 @@ export default function CartPage({ onNavigate }: CartPageProps) {
     return (
       <div className="min-h-screen bg-stone-50 pt-20 flex items-center justify-center px-4">
         <div className="max-w-md w-full text-center bg-white rounded-3xl p-10 shadow-xl">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+          <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${paymentStatus === 'success' ? 'bg-green-100' : 'bg-blue-100'}`}>
+            {paymentStatus === 'success' ? (
+              <CheckCircle size={40} className="text-green-600" />
+            ) : (
+              <CheckCircle size={40} className="text-blue-600" />
+            )}
           </div>
-          <h2 className="text-3xl font-black text-green-900 font-heading mb-3">Order Confirmed!</h2>
+          <h2 className="text-3xl font-black text-green-900 font-heading mb-3">
+            {paymentStatus === 'success' ? 'Payment Successful!' : 'Order Confirmed!'}
+          </h2>
           <p className="text-stone-600 mb-2">Order ID: <strong className="text-green-700">#{orderId}</strong></p>
           <p className="text-stone-500 text-sm mb-8">
-            Your order has been placed. We'll confirm payment and dispatch your fresh organic products within 24 hours.
+            {paymentStatus === 'success'
+              ? 'Your payment was successful! We\'ll dispatch your fresh organic products within 24 hours.'
+              : 'Your order has been placed. We\'ll confirm payment and dispatch your products soon.'}
           </p>
           <div className="space-y-3">
             <button onClick={() => onNavigate('dashboard')} className="btn-primary w-full py-3">
@@ -126,7 +224,7 @@ export default function CartPage({ onNavigate }: CartPageProps) {
   if (step === 'payment') {
     return (
       <div className="min-h-screen bg-stone-50 pt-20 px-4">
-        <div className="max-w-md mx-auto py-12">
+        <div className="max-w-lg mx-auto py-12">
           <div className="bg-white rounded-3xl overflow-hidden shadow-xl">
             <div className="bg-green-700 p-6 text-white text-center">
               <h2 className="text-2xl font-black font-heading">Complete Payment</h2>
@@ -137,12 +235,42 @@ export default function CartPage({ onNavigate }: CartPageProps) {
                 <UpiQrCode className="w-48 h-48" amount={grandTotal} orderId={orderId} />
               </div>
 
-              <button
-                onClick={handlePaymentDone}
-                className="btn-primary w-full py-3 text-base"
-              >
-                I've Completed the Payment
-              </button>
+              <div className="space-y-3">
+                <button
+                  onClick={handleRazorpayPayment}
+                  disabled={paymentStatus === 'processing'}
+                  className="btn-primary w-full py-3.5 text-base flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {paymentStatus === 'processing' ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard size={18} />
+                      Pay with Razorpay
+                    </>
+                  )}
+                </button>
+
+                <div className="relative flex items-center justify-center my-4">
+                  <div className="border-t border-stone-200 flex-1" />
+                  <span className="px-4 text-xs text-stone-400 bg-white">OR</span>
+                  <div className="border-t border-stone-200 flex-1" />
+                </div>
+
+                <button
+                  onClick={handleManualPayment}
+                  className="w-full py-3 border-2 border-stone-200 rounded-full text-stone-600 hover:bg-stone-50 font-semibold transition-colors"
+                >
+                  I've Completed the UPI Payment
+                </button>
+              </div>
+
+              <p className="text-xs text-stone-400 text-center mt-4">
+                Pay using UPI, Credit Card, Net Banking, or Wallets
+              </p>
             </div>
           </div>
         </div>
@@ -153,7 +281,7 @@ export default function CartPage({ onNavigate }: CartPageProps) {
   if (items.length === 0) {
     return (
       <div className="min-h-screen bg-stone-50 pt-20 flex items-center justify-center px-4">
-        <div className="text-center">
+        <div className="text-center bg-white rounded-3xl p-10 shadow-sm">
           <ShoppingBag size={64} className="text-stone-300 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-stone-600 mb-3">Your cart is empty</h2>
           <p className="text-stone-400 mb-6">Add some fresh organic products to get started!</p>
@@ -194,8 +322,8 @@ export default function CartPage({ onNavigate }: CartPageProps) {
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-stone-800">{item.product.name}</h3>
                     <p className="text-sm text-stone-500">₹{item.product.price}/{item.product.unit}</p>
-                    {item.product.is_organic && (
-                      <span className="organic-badge text-xs mt-1 inline-block">Organic</span>
+                    {item.product.stock !== undefined && item.product.stock < 5 && (
+                      <span className="text-xs text-amber-600 font-medium">Only {item.product.stock} left</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
@@ -208,7 +336,8 @@ export default function CartPage({ onNavigate }: CartPageProps) {
                     <span className="w-8 text-center font-bold">{item.quantity}</span>
                     <button
                       onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                      className="w-8 h-8 rounded-full border border-stone-200 flex items-center justify-center hover:bg-stone-100 transition-colors"
+                      disabled={item.product.stock !== undefined && item.quantity >= item.product.stock}
+                      className="w-8 h-8 rounded-full border border-stone-200 flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Plus size={14} />
                     </button>
@@ -319,7 +448,7 @@ export default function CartPage({ onNavigate }: CartPageProps) {
                   <span className="text-stone-600">Order Total</span>
                   <span className="font-black text-green-700 text-lg">₹{grandTotal}</span>
                 </div>
-                <p className="text-xs text-stone-400">Payment via UPI after placing order</p>
+                <p className="text-xs text-stone-400">Secure payment via Razorpay</p>
               </div>
 
               <div className="flex gap-3 mt-6">
@@ -332,9 +461,16 @@ export default function CartPage({ onNavigate }: CartPageProps) {
                 <button
                   onClick={handlePlaceOrder}
                   disabled={loading || !form.name || !form.phone || !form.address}
-                  className="flex-1 btn-primary py-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="flex-1 btn-primary py-3 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {loading ? 'Placing Order...' : 'Place Order'}
+                  {loading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Placing...
+                    </>
+                  ) : (
+                    'Place Order'
+                  )}
                 </button>
               </div>
             </div>

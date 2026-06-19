@@ -14,6 +14,22 @@ export type Profile = {
   created_at: string;
 };
 
+export type Cottage = {
+  id: string;
+  name: string;
+  description: string | null;
+  price_per_night: number;
+  max_guests: number;
+  images: string[];
+  video_url: string | null;
+  amenities: string[];
+  rating: number;
+  reviews_count: number;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+};
+
 export type ProductCategory = {
   id: string;
   name: string;
@@ -75,6 +91,9 @@ export type Order = {
   delivery_phone: string | null;
   estimated_delivery: string | null;
   notes: string | null;
+  razorpay_order_id: string | null;
+  razorpay_payment_id: string | null;
+  razorpay_signature: string | null;
   created_at: string;
   updated_at: string;
   order_items?: OrderItem[];

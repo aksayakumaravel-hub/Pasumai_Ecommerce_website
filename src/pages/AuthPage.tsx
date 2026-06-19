@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Eye, EyeOff, Leaf, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, Leaf, ArrowLeft, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import FarmLogo from '../components/FarmLogo';
 
@@ -21,18 +21,34 @@ export default function AuthPage({ onNavigate, initialMode = 'login' }: AuthPage
     password: '',
   });
 
+  const clearMessages = () => {
+    setError('');
+    setSuccess('');
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    clearMessages();
+
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: form.email,
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
+        email: form.email.trim().toLowerCase(),
         password: form.password,
       });
-      if (error) throw error;
-      onNavigate('home');
-    } catch (err: unknown) {
+
+      if (loginError) {
+        if (loginError.message.includes('Invalid login credentials')) {
+          throw new Error('Invalid email or password. Please try again.');
+        }
+        throw loginError;
+      }
+
+      if (data.session) {
+        setSuccess('Login successful! Redirecting...');
+        setTimeout(() => onNavigate('home'), 500);
+      }
+    } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed. Please try again.');
     } finally {
       setLoading(false);
@@ -42,24 +58,51 @@ export default function AuthPage({ onNavigate, initialMode = 'login' }: AuthPage
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    clearMessages();
+
+    if (form.password.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email: form.email,
+      const { data, error: signupError } = await supabase.auth.signUp({
+        email: form.email.trim().toLowerCase(),
         password: form.password,
+        options: {
+          data: {
+            full_name: form.name,
+            phone: form.phone,
+          },
+        },
       });
-      if (error) throw error;
+
+      if (signupError) {
+        if (signupError.message.includes('already registered')) {
+          throw new Error('This email is already registered. Please sign in instead.');
+        }
+        throw signupError;
+      }
 
       if (data.user) {
-        await supabase.from('profiles').insert({
+        // Create profile
+        const { error: profileError } = await supabase.from('profiles').insert({
           id: data.user.id,
           full_name: form.name,
-          phone: form.phone,
+          phone: form.phone || null,
           role: 'customer',
         });
+
+        if (profileError) {
+          console.error('Profile creation error:', profileError);
+          // Don't block signup if profile creation fails
+        }
+
+        setSuccess('Account created successfully! Redirecting...');
+        setTimeout(() => onNavigate('home'), 500);
       }
-      onNavigate('home');
-    } catch (err: unknown) {
+    } catch (err) {
       setError(err instanceof Error ? err.message : 'Signup failed. Please try again.');
     } finally {
       setLoading(false);
@@ -69,12 +112,20 @@ export default function AuthPage({ onNavigate, initialMode = 'login' }: AuthPage
   const handleForgot = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    clearMessages();
+
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(form.email);
-      if (error) throw error;
-      setSuccess('Password reset email sent! Check your inbox.');
-    } catch (err: unknown) {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        form.email.trim().toLowerCase(),
+        {
+          redirectTo: `${window.location.origin}/auth?mode=reset`,
+        }
+      );
+
+      if (resetError) throw resetError;
+
+      setSuccess('Password reset email sent! Check your inbox and spam folder.');
+    } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send reset email.');
     } finally {
       setLoading(false);
@@ -90,7 +141,7 @@ export default function AuthPage({ onNavigate, initialMode = 'login' }: AuthPage
           alt="Farm"
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-green-950/80 backdrop-blur-sm" />
+        <div className="absolute inset-0 bg-green-950/85 backdrop-blur-sm" />
       </div>
 
       <div className="relative w-full max-w-md">
@@ -121,9 +172,9 @@ export default function AuthPage({ onNavigate, initialMode = 'login' }: AuthPage
               {(['login', 'signup'] as const).map(m => (
                 <button
                   key={m}
-                  onClick={() => { setMode(m); setError(''); }}
+                  onClick={() => { setMode(m); clearMessages(); }}
                   className={`flex-1 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 ${
-                    mode === m ? 'bg-green-600 text-white' : 'text-white/60 hover:text-white'
+                    mode === m ? 'bg-green-600 text-white shadow-lg' : 'text-white/60 hover:text-white'
                   }`}
                 >
                   {m === 'login' ? 'Sign In' : 'Sign Up'}
@@ -147,7 +198,7 @@ export default function AuthPage({ onNavigate, initialMode = 'login' }: AuthPage
             <form onSubmit={handleForgot} className="space-y-4">
               <button
                 type="button"
-                onClick={() => setMode('login')}
+                onClick={() => { setMode('login'); clearMessages(); }}
                 className="flex items-center gap-2 text-white/60 hover:text-white text-sm mb-2 transition-colors"
               >
                 <ArrowLeft size={14} />
@@ -167,9 +218,16 @@ export default function AuthPage({ onNavigate, initialMode = 'login' }: AuthPage
               <button
                 type="submit"
                 disabled={loading}
-                className="btn-primary w-full py-3 disabled:opacity-60"
+                className="btn-primary w-full py-3 disabled:opacity-60 flex items-center justify-center gap-2"
               >
-                {loading ? 'Sending...' : 'Send Reset Email'}
+                {loading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  'Send Reset Email'
+                )}
               </button>
             </form>
           ) : mode === 'signup' ? (
@@ -230,9 +288,16 @@ export default function AuthPage({ onNavigate, initialMode = 'login' }: AuthPage
               <button
                 type="submit"
                 disabled={loading}
-                className="btn-primary w-full py-3 text-base disabled:opacity-60 mt-2"
+                className="btn-primary w-full py-3.5 text-base disabled:opacity-60 mt-2 flex items-center justify-center gap-2"
               >
-                {loading ? 'Creating account...' : 'Create Account'}
+                {loading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Creating account...
+                  </>
+                ) : (
+                  'Create Account'
+                )}
               </button>
             </form>
           ) : (
@@ -253,7 +318,7 @@ export default function AuthPage({ onNavigate, initialMode = 'login' }: AuthPage
                   <label className="text-white/80 text-sm font-medium">Password</label>
                   <button
                     type="button"
-                    onClick={() => setMode('forgot')}
+                    onClick={() => { setMode('forgot'); clearMessages(); }}
                     className="text-green-400 text-xs hover:text-green-300 transition-colors"
                   >
                     Forgot password?
@@ -280,9 +345,16 @@ export default function AuthPage({ onNavigate, initialMode = 'login' }: AuthPage
               <button
                 type="submit"
                 disabled={loading}
-                className="btn-primary w-full py-3 text-base disabled:opacity-60 mt-2"
+                className="btn-primary w-full py-3.5 text-base disabled:opacity-60 mt-2 flex items-center justify-center gap-2"
               >
-                {loading ? 'Signing in...' : 'Sign In'}
+                {loading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  'Sign In'
+                )}
               </button>
             </form>
           )}
