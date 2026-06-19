@@ -45,13 +45,25 @@ export default function AuthPage({ onNavigate, initialMode = 'login' }: AuthPage
       }
 
       if (data.session) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', data.session.user.id)
-          .maybeSingle();
+        // Check if user is admin by email for predefined admins
+        const adminEmails = ['aksayakumaravel@gmail.com', 'mkumaran3577@gmail.com'];
+        const isAdminEmail = adminEmails.includes(form.email.trim().toLowerCase());
 
-        const isAdmin = profileData?.role === 'admin';
+        // Also check profile role if available
+        let isAdmin = isAdminEmail;
+        try {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', data.session.user.id)
+            .maybeSingle();
+          if (profileData?.role === 'admin') {
+            isAdmin = true;
+          }
+        } catch (e) {
+          // Profile fetch failed, use email check result
+        }
+
         setSuccess('Login successful! Redirecting...');
         setTimeout(() => onNavigate(isAdmin ? 'admin' : 'home'), 500);
       }
