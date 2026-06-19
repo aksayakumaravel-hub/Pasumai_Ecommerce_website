@@ -117,27 +117,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('Auth state change:', event);
 
-      setSession(newSession);
-      setUser(newSession?.user ?? null);
-
-      if (newSession?.user) {
+      // For SIGNED_IN, we need to fetch profile before stopping loading
+      // to avoid race condition where admin page shows "Access Restricted"
+      if (event === 'SIGNED_IN' && newSession?.user) {
+        setLoading(true);
+        setSession(newSession);
+        setUser(newSession.user);
         // Use setTimeout to avoid potential deadlock with onAuthStateChange
         setTimeout(async () => {
           if (!isMounted.current) return;
           const profileData = await fetchProfile(newSession.user.id);
           if (isMounted.current) {
             setProfile(profileData);
+            setLoading(false);
           }
         }, 0);
       } else {
-        setProfile(null);
-      }
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
 
-      if (event === 'SIGNED_OUT') {
-        setProfile(null);
-      }
+        if (newSession?.user) {
+          setTimeout(async () => {
+            if (!isMounted.current) return;
+            const profileData = await fetchProfile(newSession.user.id);
+            if (isMounted.current) {
+              setProfile(profileData);
+            }
+          }, 0);
+        } else {
+          setProfile(null);
+        }
 
-      setLoading(false);
+        if (event === 'SIGNED_OUT') {
+          setProfile(null);
+          setUser(null);
+          setSession(null);
+        }
+
+        setLoading(false);
+      }
     });
 
     return () => {
@@ -150,10 +168,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-
       setUser(null);
       setProfile(null);
       setSession(null);
+      setLoading(false);
     } catch (err) {
       console.error('Sign out error:', err);
       throw err;

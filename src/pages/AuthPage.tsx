@@ -45,8 +45,15 @@ export default function AuthPage({ onNavigate, initialMode = 'login' }: AuthPage
       }
 
       if (data.session) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.session.user.id)
+          .maybeSingle();
+
+        const isAdmin = profileData?.role === 'admin';
         setSuccess('Login successful! Redirecting...');
-        setTimeout(() => onNavigate('home'), 500);
+        setTimeout(() => onNavigate(isAdmin ? 'admin' : 'home'), 500);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed. Please try again.');

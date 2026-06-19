@@ -163,7 +163,7 @@ function ImageUploader({
 }
 
 export default function AdminPage({ onNavigate }: AdminPageProps) {
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const [tab, setTab] = useState<AdminTab>('dashboard');
   const [orders, setOrders] = useState<Order[]>([]);
   const [cottageBookings, setCottageBookings] = useState<CottageBooking[]>([]);
@@ -188,11 +188,23 @@ export default function AdminPage({ onNavigate }: AdminPageProps) {
   const [orderSearch, setOrderSearch] = useState('');
   const [imagesInput, setImagesInput] = useState('');
   const [amenitiesInput, setAmenitiesInput] = useState('');
+  const [dataFetched, setDataFetched] = useState(false);
 
   useEffect(() => {
-    if (!user || profile?.role !== 'admin') return;
-    fetchAll();
-  }, [user, profile]);
+    if (authLoading) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    if (profile?.role !== 'admin') {
+      setLoading(false);
+      return;
+    }
+    if (!dataFetched) {
+      fetchAll();
+      setDataFetched(true);
+    }
+  }, [user, profile, authLoading, dataFetched]);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -231,7 +243,33 @@ export default function AdminPage({ onNavigate }: AdminPageProps) {
     }
   };
 
-  if (!user || profile?.role !== 'admin') {
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-stone-50 pt-20 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 size={40} className="animate-spin text-green-600 mx-auto mb-4" />
+          <p className="text-stone-500">Checking access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-stone-50 pt-20 flex items-center justify-center">
+        <div className="text-center bg-white rounded-3xl p-12 shadow-xl max-w-md mx-4">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <X size={32} className="text-amber-500" />
+          </div>
+          <h2 className="text-2xl font-bold text-stone-700 mb-2">Sign In Required</h2>
+          <p className="text-stone-400 mb-6">Please sign in to access the admin panel.</p>
+          <button onClick={() => onNavigate('login')} className="btn-primary">Sign In</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile || profile.role !== 'admin') {
     return (
       <div className="min-h-screen bg-stone-50 pt-20 flex items-center justify-center">
         <div className="text-center bg-white rounded-3xl p-12 shadow-xl max-w-md mx-4">
