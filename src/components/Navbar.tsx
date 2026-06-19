@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { supabase } from '../lib/supabase';
 import FarmLogo from './FarmLogo';
+import NotificationCenter from './NotificationCenter';
 
 type NavbarProps = {
   currentPage: string;
@@ -153,6 +154,11 @@ export default function Navbar({ currentPage, onNavigate }: NavbarProps) {
 
           {/* Right Actions */}
           <div className="flex items-center gap-2">
+            {/* Notifications */}
+            <div className={`transition-colors ${solid ? '' : 'text-white'}`}>
+              <NotificationCenter onNavigate={onNavigate} />
+            </div>
+
             {/* Cart */}
             <button
               onClick={() => onNavigate('cart')}

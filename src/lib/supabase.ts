@@ -165,7 +165,7 @@ export type GalleryItem = {
   created_at: string;
 };
 
-export type Notification = {
+export type AppNotification = {
   id: string;
   user_id: string;
   title: string;
@@ -174,6 +174,51 @@ export type Notification = {
   is_read: boolean;
   reference_id: string | null;
   reference_type: string | null;
+  category: string | null;
+  read_at: string | null;
+  clicked_at: string | null;
+  created_at: string;
+};
+
+export type NotificationPreferences = {
+  id: string;
+  user_id: string;
+  push_enabled: boolean;
+  email_enabled: boolean;
+  order_updates: boolean;
+  delivery_updates: boolean;
+  promotions: boolean;
+  farm_updates: boolean;
+  booking_updates: boolean;
+  payment_updates: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NotificationCampaign = {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  target_group: string;
+  scheduled_for: string | null;
+  sent_at: string | null;
+  status: string;
+  sent_count: number;
+  opened_count: number;
+  clicked_count: number;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type NotificationTemplate = {
+  id: string;
+  name: string;
+  title: string;
+  message: string;
+  category: string;
+  variables: string[];
+  is_active: boolean;
   created_at: string;
 };
 
