@@ -84,7 +84,7 @@ export default function CartPage({ onNavigate }: CartPageProps) {
           delivery_phone: form.phone,
           delivery_address: form.address,
           notes: form.notes,
-          estimated_delivery: new Date(Date.now() + (eligibility?.estimated_hours || 48) * 60 * 60 * 1000).toISOString(),
+          estimated_delivery: new Date(Date.now() + (eligibility?.estimated_minutes || 120) * 60 * 1000).toISOString(),
           delivery_hub_id: eligibility?.hub_id || null,
           delivery_address_id: selectedAddress?.id || null,
         })

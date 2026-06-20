@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MapPin, Check, X, Truck, Clock, AlertTriangle, ChevronDown, Plus, Edit2, Trash2, Loader2, MapPinned } from 'lucide-react';
+import { MapPin, Check, X, Truck, Clock, AlertTriangle, ChevronDown, Plus, Trash2, Loader2, MapPinned, Navigation, Phone, Mail, MessageCircle } from 'lucide-react';
 import { useDelivery, UserAddress } from '../context/DeliveryContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -7,13 +7,14 @@ type DeliveryZoneCheckerProps = {
   onNavigate: (page: string) => void;
   onDeliveryChange?: (charge: number, isServiceable: boolean) => void;
   showAddNew?: boolean;
+  showBulkContact?: boolean;
 };
 
-export default function DeliveryZoneChecker({ onNavigate, onDeliveryChange, showAddNew = true }: DeliveryZoneCheckerProps) {
+export default function DeliveryZoneChecker({ onNavigate, onDeliveryChange, showAddNew = true, showBulkContact = true }: DeliveryZoneCheckerProps) {
   const { user } = useAuth();
   const {
-    addresses, selectedAddress, eligibility, hubs, loading, checkingPincode,
-    selectAddress, checkPincode, addAddress, deleteAddress, setDefaultAddress
+    addresses, selectedAddress, eligibility, hubs, loading, checkingPincode, location,
+    selectAddress, checkPincode, checkGPSLocation, addAddress, deleteAddress, setDefaultAddress
   } = useDelivery();
 
   const [showDropdown, setShowDropdown] = useState(false);
@@ -30,21 +31,22 @@ export default function DeliveryZoneChecker({ onNavigate, onDeliveryChange, show
     landmark: '',
   });
   const [pincodeCheck, setPincodeCheck] = useState('');
-  const [quickPincodeResult, setQuickPincodeResult] = useState<{
+  const [quickResult, setQuickResult] = useState<{
     is_serviceable: boolean;
     hub_name: string | null;
     delivery_charge: number | null;
+    distance_km: number | null;
   } | null>(null);
 
   // Notify parent of delivery changes
   useEffect(() => {
-    if (onDeliveryChange && selectedAddress) {
+    if (onDeliveryChange && eligibility) {
       onDeliveryChange(
-        eligibility?.delivery_charge || 0,
-        eligibility?.is_serviceable || false
+        eligibility.delivery_charge || 0,
+        eligibility.is_serviceable || false
       );
     }
-  }, [eligibility, selectedAddress]);
+  }, [eligibility]);
 
   const handleAddAddress = async () => {
     if (!newAddress.address_line1 || !newAddress.pincode || !newAddress.city) {
@@ -61,24 +63,36 @@ export default function DeliveryZoneChecker({ onNavigate, onDeliveryChange, show
   };
 
   const handleQuickPincodeCheck = async () => {
-    if (!pincodeCheck) return;
+    if (!pincodeCheck || pincodeCheck.length !== 6) return;
+    setQuickResult(null);
     const result = await checkPincode(pincodeCheck);
     if (result) {
-      setQuickPincodeResult({
+      setQuickResult({
         is_serviceable: result.is_serviceable,
         hub_name: result.hub_name,
         delivery_charge: result.delivery_charge,
+        distance_km: result.distance_km,
       });
     }
   };
 
-  const getEstimatedDelivery = () => {
-    if (!eligibility?.estimated_hours) return '24-48 hours';
-    const hours = eligibility.estimated_hours;
-    if (hours <= 6) return 'Within 6 hours';
-    if (hours <= 12) return 'Within 12 hours';
-    if (hours <= 24) return 'Next day';
-    return `${Math.ceil(hours / 24)} days`;
+  const handleGPSCheck = async () => {
+    await checkGPSLocation();
+  };
+
+  const getEstimatedDeliveryText = () => {
+    if (!eligibility?.estimated_minutes) return '2-3 hours';
+    const mins = eligibility.estimated_minutes;
+    if (mins <= 30) return '30-45 minutes';
+    if (mins <= 60) return '45-60 minutes';
+    if (mins <= 120) return '1-2 hours';
+    const hours = Math.ceil(mins / 60);
+    return `${hours}-${hours + 1} hours`;
+  };
+
+  const formatDistance = (distance: number | null) => {
+    if (distance === null) return '';
+    return `${distance.toFixed(1)} KM`;
   };
 
   if (!user) {
@@ -135,9 +149,35 @@ export default function DeliveryZoneChecker({ onNavigate, onDeliveryChange, show
         </div>
       ) : (
         <>
-          {/* Quick Pincode Check */}
+          {/* Quick Location Check */}
           {!selectedAddress && (
-            <div className="mb-4">
+            <div className="mb-4 space-y-3">
+              {/* GPS Button */}
+              <button
+                onClick={handleGPSCheck}
+                disabled={location.loading}
+                className="w-full py-3 border-2 border-dashed border-green-300 rounded-xl text-sm text-green-600 font-medium hover:bg-green-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {location.loading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Navigation size={18} />
+                )}
+                {location.loading ? 'Detecting Location...' : 'Use My Current Location'}
+              </button>
+
+              {location.error && (
+                <p className="text-xs text-red-500 text-center">{location.error}</p>
+              )}
+
+              {/* OR divider */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-stone-200" />
+                <span className="text-xs text-stone-400">OR</span>
+                <div className="flex-1 h-px bg-stone-200" />
+              </div>
+
+              {/* Pincode Input */}
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -156,40 +196,80 @@ export default function DeliveryZoneChecker({ onNavigate, onDeliveryChange, show
                 </button>
               </div>
 
-              {quickPincodeResult && (
-                <div className={`mt-3 p-3 rounded-xl ${
-                  quickPincodeResult.is_serviceable ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+              {/* Quick Result */}
+              {quickResult && (
+                <div className={`p-4 rounded-xl ${
+                  quickResult.is_serviceable ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
                 }`}>
-                  {quickPincodeResult.is_serviceable ? (
-                    <div className="flex items-start gap-3">
-                      <Check size={18} className="text-green-600 mt-0.5" />
-                      <div>
-                        <p className="font-semibold text-green-800">Delivery Available</p>
-                        <p className="text-sm text-green-700 mt-0.5">
-                          Nearest hub: {quickPincodeResult.hub_name}
-                        </p>
-                        {quickPincodeResult.delivery_charge !== null && (
-                          <p className="text-xs text-green-600 mt-1">
-                            Delivery charge: ₹{quickPincodeResult.delivery_charge}
+                  {quickResult.is_serviceable ? (
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-3">
+                        <Check size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
+                        <div className="flex-1">
+                          <p className="font-semibold text-green-800">Delivery Available</p>
+                          <p className="text-sm text-green-700 mt-0.5">
+                            Nearest Hub: {quickResult.hub_name}
                           </p>
-                        )}
+                        </div>
                       </div>
+                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-green-200">
+                        <div className="text-center">
+                          <p className="text-xs text-stone-500">Distance</p>
+                          <p className="font-semibold text-stone-800">
+                            {quickResult.distance_km ? `${quickResult.distance_km} KM` : 'Within zone'}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-stone-500">Delivery Charge</p>
+                          <p className="font-semibold text-green-700">₹{quickResult.delivery_charge || 40}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-green-600 flex items-center gap-1 pt-2">
+                        <Clock size={12} />
+                        Estimated delivery: 45-60 minutes
+                      </p>
                     </div>
                   ) : (
-                    <div className="flex items-start gap-3">
-                      <X size={18} className="text-red-500 mt-0.5" />
-                      <div>
-                        <p className="font-semibold text-red-800">Sorry, we don't deliver to this area</p>
-                        <p className="text-sm text-red-600 mt-1">
-                          For bulk orders and special delivery requests,{' '}
-                          <button
-                            onClick={() => onNavigate('contact')}
-                            className="text-red-700 underline font-medium"
-                          >
-                            contact us
-                          </button>
-                        </p>
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-3">
+                        <X size={18} className="text-red-500 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="font-semibold text-red-800">Sorry, we currently do not deliver to your location.</p>
+                          <p className="text-xs text-red-600 mt-1">
+                            Outside 20 KM service zone
+                          </p>
+                        </div>
                       </div>
+                      {showBulkContact && (
+                        <div className="pt-3 border-t border-red-200">
+                          <p className="text-sm text-red-700 mb-2">For bulk orders and special delivery requests, please contact us:</p>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => onNavigate('contact')}
+                              className="flex-1 py-2 px-3 bg-white border border-red-300 rounded-lg text-xs font-medium text-red-700 hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+                            >
+                              <Mail size={14} />
+                              Contact Us
+                            </button>
+                            <a
+                              href="tel:+919952814029"
+                              className="flex-1 py-2 px-3 bg-white border border-red-300 rounded-lg text-xs font-medium text-red-700 hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+                            >
+                              <Phone size={14} />
+                              Call Now
+                            </a>
+                            <a
+                              href="https://wa.me/919952814029?text=Hi, I'm interested in placing a bulk order for delivery outside your service area."
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 py-2 px-3 bg-green-600 rounded-lg text-xs font-medium text-white hover:bg-green-700 transition-colors flex items-center justify-center gap-1"
+                            >
+                              <MessageCircle size={14} />
+                              WhatsApp
+                            </a>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -287,7 +367,7 @@ export default function DeliveryZoneChecker({ onNavigate, onDeliveryChange, show
                 <input
                   placeholder="Phone"
                   value={newAddress.phone}
-                  onChange={(e) => setNewAddress({ ...newAddress, phone: e.target.value })}
+                  onChange={(e) => setNewAddress({ ...newAddress, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                   className="px-3 py-2 border border-stone-200 rounded-lg text-sm"
                   maxLength={10}
                 />
@@ -343,43 +423,91 @@ export default function DeliveryZoneChecker({ onNavigate, onDeliveryChange, show
             </button>
           )}
 
-          {/* Selected Address Details */}
+          {/* Selected Address Details with Full Info */}
           {selectedAddress && !showDropdown && eligibility && (
-            <div className={`mt-4 p-3 rounded-xl ${
+            <div className={`mt-4 p-4 rounded-xl ${
               eligibility.is_serviceable ? 'bg-green-50' : 'bg-red-50'
             }`}>
               {eligibility.is_serviceable ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex items-center gap-2 text-green-700">
                     <Check size={16} />
                     <span className="font-medium text-sm">Delivery Available</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
-                    <div className="flex items-center gap-1.5 text-stone-600">
-                      <Truck size={14} className="text-green-600" />
-                      {eligibility.hub_name}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white/60 rounded-lg p-2.5">
+                      <div className="flex items-center gap-2 text-xs text-stone-500 mb-1">
+                        <Truck size={12} />
+                        Nearest Hub
+                      </div>
+                      <p className="font-semibold text-stone-800 text-sm">{eligibility.hub_name}</p>
                     </div>
-                    <div className="flex items-center gap-1.5 text-stone-600">
-                      <Clock size={14} className="text-green-600" />
-                      {getEstimatedDelivery()}
+                    {eligibility.distance_km !== null && (
+                      <div className="bg-white/60 rounded-lg p-2.5">
+                        <div className="flex items-center gap-2 text-xs text-stone-500 mb-1">
+                          <MapPin size={12} />
+                          Distance From Hub
+                        </div>
+                        <p className="font-semibold text-stone-800 text-sm">{eligibility.distance_km.toFixed(1)} KM</p>
+                      </div>
+                    )}
+                    <div className="bg-white/60 rounded-lg p-2.5">
+                      <div className="flex items-center gap-2 text-xs text-stone-500 mb-1">
+                        <Truck size={12} />
+                        Delivery Charge
+                      </div>
+                      <p className="font-semibold text-green-700 text-sm">₹{eligibility.delivery_charge || 0}</p>
                     </div>
-                    <div className="font-semibold text-green-700">
-                      ₹{eligibility.delivery_charge || 0} delivery
+                    <div className="bg-white/60 rounded-lg p-2.5">
+                      <div className="flex items-center gap-2 text-xs text-stone-500 mb-1">
+                        <Clock size={12} />
+                        Estimated Delivery
+                      </div>
+                      <p className="font-semibold text-stone-800 text-sm">{getEstimatedDeliveryText()}</p>
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="flex items-start gap-2 text-red-700">
-                  <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="font-medium text-sm">Sorry, we don't deliver to this location</p>
-                    <p className="text-xs text-red-600 mt-1">
-                      For bulk orders,{' '}
-                      <button onClick={() => onNavigate('contact')} className="underline font-medium">
-                        contact us
-                      </button>
-                    </p>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2 text-red-700">
+                    <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium text-sm">Sorry, we currently do not deliver to your location.</p>
+                      <p className="text-xs text-red-600 mt-1">
+                        Outside 20 KM service zone
+                      </p>
+                    </div>
                   </div>
+                  {showBulkContact && (
+                    <div className="pt-3 border-t border-red-200">
+                      <p className="text-sm text-red-700 mb-2">For bulk orders and special delivery requests:</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => onNavigate('contact')}
+                          className="flex-1 py-2 px-3 bg-white border border-red-300 rounded-lg text-xs font-medium text-red-700 hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Mail size={14} />
+                          Contact Us
+                        </button>
+                        <a
+                          href="tel:+919952814029"
+                          className="flex-1 py-2 px-3 bg-white border border-red-300 rounded-lg text-xs font-medium text-red-700 hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Phone size={14} />
+                          Call Now
+                        </a>
+                        <a
+                          href="https://wa.me/919952814029?text=Hi, I'm interested in placing a bulk order for delivery outside your service area."
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 py-2 px-3 bg-green-600 rounded-lg text-xs font-medium text-white hover:bg-green-700 transition-colors flex items-center justify-center gap-1"
+                        >
+                          <MessageCircle size={14} />
+                          WhatsApp
+                        </a>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -390,12 +518,12 @@ export default function DeliveryZoneChecker({ onNavigate, onDeliveryChange, show
       {/* Hub Info */}
       {hubs.length > 0 && (
         <div className="mt-4 pt-4 border-t border-stone-100">
-          <p className="text-xs text-stone-500 mb-2">Our delivery hubs:</p>
+          <p className="text-xs text-stone-500 mb-2">Our delivery hubs (20 KM radius):</p>
           <div className="flex flex-wrap gap-2">
             {hubs.map(hub => (
               <div key={hub.id} className="flex items-center gap-1.5 text-xs text-stone-600 bg-stone-100 px-2 py-1 rounded-lg">
                 <MapPin size={12} className="text-green-600" />
-                {hub.name} ({hub.city})
+                {hub.name}
               </div>
             ))}
           </div>
