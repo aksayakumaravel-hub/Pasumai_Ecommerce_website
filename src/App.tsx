@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
+import { DeliveryProvider } from './context/DeliveryContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import FarmLogo from './components/FarmLogo';
@@ -23,7 +24,7 @@ type Page =
 
 function LoadingScreen() {
   return (
-    <div className="fixed inset-0 bg-green-950 flex flex-col items-center justify-center z-[100]">
+    <div className="fixed inset-0 bg-green-950 flex flex-col items-center justify-center z-[100] pointer-events-auto">
       <div className="mb-6 animate-float">
         <FarmLogo className="w-24 h-24" />
       </div>
@@ -95,7 +96,9 @@ export default function App() {
   return (
     <AuthProvider>
       <CartProvider>
-        <AppContent />
+        <DeliveryProvider>
+          <AppContent />
+        </DeliveryProvider>
       </CartProvider>
     </AuthProvider>
   );

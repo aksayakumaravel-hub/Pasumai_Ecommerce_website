@@ -5,7 +5,7 @@ import {
   ArrowUpDown, Eye, Upload, RefreshCw, TrendingUp, Star,
   ChevronRight, Search, Save, AlertTriangle,
   Layers, Video, FileImage, ToggleLeft, ToggleRight, Send,
-  DollarSign, Loader2, XCircle, UserCog, Building2, Settings
+  DollarSign, Loader2, XCircle, UserCog, Building2, Settings, MapPin, Truck
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -21,7 +21,7 @@ type AdminPageProps = {
 type AdminTab =
   | 'dashboard' | 'orders' | 'cottages' | 'visits' | 'halls'
   | 'messages' | 'products' | 'categories' | 'gallery' | 'notifications'
-  | 'users' | 'cottage-manage';
+  | 'users' | 'cottage-manage' | 'delivery';
 
 const statusOptions = {
   orders: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'],
@@ -478,6 +478,7 @@ export default function AdminPage({ onNavigate }: AdminPageProps) {
     { id: 'products', label: 'Products', icon: Package },
     { id: 'categories', label: 'Categories', icon: Tag },
     { id: 'gallery', label: 'Gallery', icon: Image },
+    { id: 'delivery', label: 'Delivery', icon: Truck },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'notifications', label: 'Notify', icon: Bell },
   ];
@@ -1146,8 +1147,254 @@ export default function AdminPage({ onNavigate }: AdminPageProps) {
                 </div>
               </div>
             )}
+
+            {/* DELIVERY MANAGEMENT */}
+            {tab === 'delivery' && (
+              <DeliveryManagementTab showToast={showToast} />
+            )}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Delivery Management Component
+function DeliveryManagementTab({ showToast }: { showToast: (msg: string, type?: 'success' | 'error') => void }) {
+  const [hubs, setHubs] = useState<{ id: string; name: string; city: string; district: string; pincode: string; is_active: boolean }[]>([]);
+  const [zones, setZones] = useState<{ hub_id: string; max_distance_km: number; min_delivery_charge: number; per_km_charge: number; free_delivery_min_order: number }[]>([]);
+  const [pincodes, setPincodes] = useState<{ id: string; hub_id: string; pincode: string; delivery_charge: number; is_active: boolean }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newPincode, setNewPincode] = useState({ hub_id: '', pincode: '', charge: '30' });
+
+  useEffect(() => {
+    fetchDeliveryData();
+  }, []);
+
+  const fetchDeliveryData = async () => {
+    setLoading(true);
+    const [hubsRes, zonesRes, pincodesRes] = await Promise.all([
+      supabase.from('delivery_hubs').select('*').order('name'),
+      supabase.from('delivery_zones').select('*, delivery_hubs(name)'),
+      supabase.from('supported_pincodes').select('*').order('pincode'),
+    ]);
+    setHubs(hubsRes.data || []);
+    setZones(zonesRes.data || []);
+    setPincodes(pincodesRes.data || []);
+    setLoading(false);
+  };
+
+  const addPincode = async () => {
+    if (!newPincode.hub_id || !newPincode.pincode || newPincode.pincode.length !== 6) {
+      showToast('Please enter a valid 6-digit pincode', 'error');
+      return;
+    }
+    const { error } = await supabase.from('supported_pincodes').insert({
+      hub_id: newPincode.hub_id,
+      pincode: newPincode.pincode,
+      delivery_charge: Number(newPincode.charge),
+      is_active: true,
+    });
+    if (error) {
+      showToast('Failed to add pincode (may already exist)', 'error');
+    } else {
+      showToast('Pincode added successfully');
+      setNewPincode({ hub_id: newPincode.hub_id, pincode: '', charge: '30' });
+      fetchDeliveryData();
+    }
+  };
+
+  const deletePincode = async (id: string) => {
+    await supabase.from('supported_pincodes').delete().eq('id', id);
+    showToast('Pincode removed');
+    fetchDeliveryData();
+  };
+
+  const togglePincode = async (id: string, isActive: boolean) => {
+    await supabase.from('supported_pincodes').update({ is_active: !isActive }).eq('id', id);
+    fetchDeliveryData();
+  };
+
+  const updateZone = async (hubId: string, field: string, value: number) => {
+    await supabase.from('delivery_zones').update({ [field]: value }).eq('hub_id', hubId);
+    showToast('Zone updated');
+    fetchDeliveryData();
+  };
+
+  if (loading) {
+    return <div className="flex justify-center py-10"><Loader2 size={32} className="animate-spin text-green-600" /></div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Delivery Hubs */}
+      <div className="bg-white rounded-2xl p-6 border border-stone-100 shadow-sm">
+        <h3 className="font-bold text-stone-800 text-lg mb-4 flex items-center gap-2">
+          <MapPin size={18} className="text-green-600" />
+          Delivery Hubs
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {hubs.map(hub => (
+            <div key={hub.id} className={`p-4 rounded-xl border ${hub.is_active ? 'border-green-200 bg-green-50' : 'border-stone-200 bg-stone-50'}`}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-semibold text-stone-800">{hub.name}</p>
+                  <p className="text-sm text-stone-500">{hub.city}, {hub.district}</p>
+                  <p className="text-xs text-stone-400 mt-1">Pincode: {hub.pincode}</p>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-full ${hub.is_active ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'}`}>
+                  {hub.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Delivery Zones */}
+      <div className="bg-white rounded-2xl p-6 border border-stone-100 shadow-sm">
+        <h3 className="font-bold text-stone-800 text-lg mb-4 flex items-center gap-2">
+          <Truck size={18} className="text-green-600" />
+          Delivery Zone Configuration
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-stone-50">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-stone-600">Hub</th>
+                <th className="text-left px-4 py-3 font-semibold text-stone-600">Max Distance (km)</th>
+                <th className="text-left px-4 py-3 font-semibold text-stone-600">Min Charge</th>
+                <th className="text-left px-4 py-3 font-semibold text-stone-600">Per Km</th>
+                <th className="text-left px-4 py-3 font-semibold text-stone-600">Free Delivery Min</th>
+              </tr>
+            </thead>
+            <tbody>
+              {zones.map((zone: any) => (
+                <tr key={zone.hub_id} className="border-b border-stone-100">
+                  <td className="px-4 py-3 font-medium">{zone.delivery_hubs?.name || 'Unknown'}</td>
+                  <td className="px-4 py-3">
+                    <input
+                      type="number"
+                      value={zone.max_distance_km}
+                      onChange={(e) => updateZone(zone.hub_id, 'max_distance_km', Number(e.target.value))}
+                      className="w-20 px-2 py-1 border rounded text-sm"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <input
+                      type="number"
+                      value={zone.min_delivery_charge}
+                      onChange={(e) => updateZone(zone.hub_id, 'min_delivery_charge', Number(e.target.value))}
+                      className="w-20 px-2 py-1 border rounded text-sm"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <input
+                      type="number"
+                      value={zone.per_km_charge}
+                      onChange={(e) => updateZone(zone.hub_id, 'per_km_charge', Number(e.target.value))}
+                      className="w-16 px-2 py-1 border rounded text-sm"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <input
+                      type="number"
+                      value={zone.free_delivery_min_order}
+                      onChange={(e) => updateZone(zone.hub_id, 'free_delivery_min_order', Number(e.target.value))}
+                      className="w-20 px-2 py-1 border rounded text-sm"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Supported Pincodes */}
+      <div className="bg-white rounded-2xl p-6 border border-stone-100 shadow-sm">
+        <h3 className="font-bold text-stone-800 text-lg mb-4">Supported Pincodes</h3>
+
+        {/* Add Pincode */}
+        <div className="flex gap-3 mb-4">
+          <select
+            value={newPincode.hub_id}
+            onChange={(e) => setNewPincode({ ...newPincode, hub_id: e.target.value })}
+            className="px-3 py-2 border border-stone-200 rounded-lg text-sm"
+          >
+            <option value="">Select Hub</option>
+            {hubs.filter(h => h.is_active).map(h => (
+              <option key={h.id} value={h.id}>{h.name}</option>
+            ))}
+          </select>
+          <input
+            type="text"
+            placeholder="Pincode"
+            value={newPincode.pincode}
+            onChange={(e) => setNewPincode({ ...newPincode, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+            className="w-32 px-3 py-2 border border-stone-200 rounded-lg text-sm"
+            maxLength={6}
+          />
+          <input
+            type="number"
+            placeholder="Charge"
+            value={newPincode.charge}
+            onChange={(e) => setNewPincode({ ...newPincode, charge: e.target.value })}
+            className="w-24 px-3 py-2 border border-stone-200 rounded-lg text-sm"
+          />
+          <button onClick={addPincode} className="btn-primary py-2 px-4 text-sm">Add</button>
+        </div>
+
+        {/* Pincodes List */}
+        <div className="max-h-96 overflow-y-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            {pincodes.map(p => {
+              const hub = hubs.find(h => h.id === p.hub_id);
+              return (
+                <div
+                  key={p.id}
+                  className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
+                    p.is_active ? 'bg-green-50 border border-green-200' : 'bg-stone-100'
+                  }`}
+                >
+                  <div>
+                    <span className="font-mono font-medium">{p.pincode}</span>
+                    <span className="text-xs text-stone-400 ml-1">₹{p.delivery_charge}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => togglePincode(p.id, p.is_active)}
+                      className={`p-1 rounded ${p.is_active ? 'text-green-600 hover:bg-green-100' : 'text-stone-400 hover:bg-stone-200'}`}
+                    >
+                      {p.is_active ? <Check size={12} /> : <X size={12} />}
+                    </button>
+                    <button
+                      onClick={() => deletePincode(p.id)}
+                      className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <p className="text-xs text-stone-400 mt-3">
+          Total: {pincodes.length} pincodes | Active: {pincodes.filter(p => p.is_active).length}
+        </p>
+      </div>
+
+      {/* Service Areas Info */}
+      <div className="bg-stone-50 rounded-2xl p-5 border border-stone-200">
+        <h4 className="font-semibold text-stone-700 mb-2">Supported Districts</h4>
+        <div className="flex flex-wrap gap-2">
+          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">Madurai</span>
+          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">Dindigul</span>
+        </div>
+        <p className="text-xs text-stone-400 mt-3">
+          For bulk orders outside service areas, customers are directed to the Contact page.
+        </p>
       </div>
     </div>
   );

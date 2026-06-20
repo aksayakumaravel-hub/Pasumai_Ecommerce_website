@@ -115,21 +115,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!isMounted.current) return;
 
-      console.log('Auth state change:', event);
+      console.log('Auth state change:', event, newSession?.user?.email);
 
       // For SIGNED_IN, we need to fetch profile before stopping loading
       // to avoid race condition where admin page shows "Access Restricted"
       if (event === 'SIGNED_IN' && newSession?.user) {
-        setLoading(true);
+        // Don't set loading to true here - keep the current state
+        // The app is already loaded, we just need to update the session
         setSession(newSession);
         setUser(newSession.user);
         // Use setTimeout to avoid potential deadlock with onAuthStateChange
         setTimeout(async () => {
           if (!isMounted.current) return;
-          const profileData = await fetchProfile(newSession.user.id);
-          if (isMounted.current) {
-            setProfile(profileData);
-            setLoading(false);
+          try {
+            const profileData = await fetchProfile(newSession.user.id);
+            if (isMounted.current) {
+              setProfile(profileData);
+            }
+          } catch (err) {
+            console.error('Profile fetch error in SIGNED_IN:', err);
           }
         }, 0);
       } else {
@@ -139,9 +143,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (newSession?.user) {
           setTimeout(async () => {
             if (!isMounted.current) return;
-            const profileData = await fetchProfile(newSession.user.id);
-            if (isMounted.current) {
-              setProfile(profileData);
+            try {
+              const profileData = await fetchProfile(newSession.user.id);
+              if (isMounted.current) {
+                setProfile(profileData);
+              }
+            } catch (err) {
+              console.error('Profile fetch error:', err);
             }
           }, 0);
         } else {
@@ -153,8 +161,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setSession(null);
         }
-
-        setLoading(false);
       }
     });
 

@@ -34,6 +34,7 @@ export default function Navbar({ currentPage, onNavigate }: NavbarProps) {
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null);
   const [notifCount, setNotifCount] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const { user, profile, signOut } = useAuth();
   const { count } = useCart();
 
@@ -55,8 +56,12 @@ export default function Navbar({ currentPage, onNavigate }: NavbarProps) {
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
+      // Close dropdown if click outside
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(null);
+      }
+      // Close user menu if click outside (but not on the menu itself)
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setUserMenuOpen(false);
       }
     };
@@ -178,7 +183,7 @@ export default function Navbar({ currentPage, onNavigate }: NavbarProps) {
 
             {/* User menu */}
             {user ? (
-              <div className="relative">
+              <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-full transition-all duration-300 ${
@@ -195,7 +200,7 @@ export default function Navbar({ currentPage, onNavigate }: NavbarProps) {
                 </button>
 
                 {userMenuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-stone-100 overflow-hidden">
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-stone-100 overflow-hidden z-50">
                     <div className="px-4 py-3 border-b border-stone-100">
                       <p className="font-semibold text-stone-800 text-sm truncate">
                         {profile?.full_name || 'Welcome'}
@@ -203,7 +208,12 @@ export default function Navbar({ currentPage, onNavigate }: NavbarProps) {
                       <p className="text-xs text-stone-500 truncate">{user.email}</p>
                     </div>
                     <button
-                      onClick={() => { onNavigate('dashboard'); setUserMenuOpen(false); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        console.log('Dashboard button clicked');
+                        setUserMenuOpen(false);
+                        onNavigate('dashboard');
+                      }}
                       className="w-full flex items-center gap-3 px-4 py-3 text-sm text-stone-700 hover:bg-green-50 hover:text-green-700 transition-colors"
                     >
                       <User size={16} />
@@ -216,7 +226,12 @@ export default function Navbar({ currentPage, onNavigate }: NavbarProps) {
                     </button>
                     {profile?.role === 'admin' && (
                       <button
-                        onClick={() => { onNavigate('admin'); setUserMenuOpen(false); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          console.log('Admin Panel button clicked');
+                          setUserMenuOpen(false);
+                          onNavigate('admin');
+                        }}
                         className="w-full flex items-center gap-3 px-4 py-3 text-sm text-stone-700 hover:bg-green-50 hover:text-green-700 transition-colors"
                       >
                         <Bell size={16} />
@@ -225,7 +240,8 @@ export default function Navbar({ currentPage, onNavigate }: NavbarProps) {
                     )}
                     <div className="border-t border-stone-100">
                       <button
-                        onClick={async () => {
+                        onClick={async (e) => {
+                          e.stopPropagation();
                           setUserMenuOpen(false);
                           try {
                             await signOut();

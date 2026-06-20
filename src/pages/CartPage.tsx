@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Minus, Plus, Trash2, ShoppingBag, ArrowLeft, Leaf, CreditCard, Loader2, CheckCircle } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingBag, ArrowLeft, Leaf, CreditCard, Loader2, CheckCircle, MapPin } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useDelivery } from '../context/DeliveryContext';
 import { supabase } from '../lib/supabase';
 import { loadRazorpayScript, createRazorpayOrder, verifyAndUpdatePayment } from '../lib/razorpay';
 import UpiQrCode from '../components/UpiQrCode';
+import DeliveryZoneChecker from '../components/DeliveryZoneChecker';
 
 type CartPageProps = {
   onNavigate: (page: string) => void;
@@ -15,11 +17,14 @@ type CheckoutStep = 'cart' | 'details' | 'payment' | 'success';
 export default function CartPage({ onNavigate }: CartPageProps) {
   const { items, removeItem, updateQuantity, clearCart, total } = useCart();
   const { user, profile } = useAuth();
+  const { selectedAddress, eligibility, checkPincode } = useDelivery();
   const [step, setStep] = useState<CheckoutStep>('cart');
   const [loading, setLoading] = useState(false);
   const [orderId, setOrderId] = useState('');
   const [fullOrderId, setFullOrderId] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
+  const [deliveryCharge, setDeliveryCharge] = useState(0);
+  const [isServiceable, setIsServiceable] = useState(true);
   const [form, setForm] = useState({
     name: profile?.full_name || '',
     phone: profile?.phone || '',
@@ -37,14 +42,35 @@ export default function CartPage({ onNavigate }: CartPageProps) {
     }
   }, [profile]);
 
-  const deliveryFee = total < 500 ? 50 : 0;
+  // Update form when address changes
+  useEffect(() => {
+    if (selectedAddress) {
+      setForm(f => ({
+        ...f,
+        address: `${selectedAddress.address_line1}${selectedAddress.address_line2 ? ', ' + selectedAddress.address_line2 : ''}, ${selectedAddress.city}, ${selectedAddress.district || ''} - ${selectedAddress.pincode}`,
+      }));
+    }
+  }, [selectedAddress]);
+
+  // Calculate delivery fee
+  const deliveryFee = eligibility?.delivery_charge ?? (total >= 500 ? 0 : 40);
   const grandTotal = total + deliveryFee;
+  const freeDeliveryMin = 500;
+  const isEligibleForFreeDelivery = total >= freeDeliveryMin;
+  const canPlaceOrder = selectedAddress ? eligibility?.is_serviceable : true;
 
   const handlePlaceOrder = async () => {
     if (!user) {
       onNavigate('login');
       return;
     }
+
+    // Check delivery eligibility
+    if (selectedAddress && !eligibility?.is_serviceable) {
+      alert('Sorry, we do not deliver to this address. Please select a different address or contact us for bulk orders.');
+      return;
+    }
+
     setLoading(true);
     try {
       const { data: order, error } = await supabase
@@ -58,7 +84,9 @@ export default function CartPage({ onNavigate }: CartPageProps) {
           delivery_phone: form.phone,
           delivery_address: form.address,
           notes: form.notes,
-          estimated_delivery: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+          estimated_delivery: new Date(Date.now() + (eligibility?.estimated_hours || 48) * 60 * 60 * 1000).toISOString(),
+          delivery_hub_id: eligibility?.hub_id || null,
+          delivery_address_id: selectedAddress?.id || null,
         })
         .select()
         .single();
@@ -366,12 +394,18 @@ export default function CartPage({ onNavigate }: CartPageProps) {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-stone-600">Delivery</span>
-                    <span className={deliveryFee === 0 ? 'text-green-600 font-semibold' : 'font-semibold'}>
-                      {deliveryFee === 0 ? 'FREE' : `₹${deliveryFee}`}
+                    <span className={isEligibleForFreeDelivery ? 'text-green-600 font-semibold' : 'font-semibold'}>
+                      {isEligibleForFreeDelivery ? 'FREE' : `₹${deliveryFee}`}
                     </span>
                   </div>
-                  {deliveryFee > 0 && (
-                    <p className="text-xs text-stone-400">Free delivery on orders above ₹500</p>
+                  {!isEligibleForFreeDelivery && (
+                    <p className="text-xs text-stone-400">Free delivery on orders above ₹{freeDeliveryMin}</p>
+                  )}
+                  {eligibility?.is_serviceable && eligibility?.hub_name && (
+                    <p className="text-xs text-green-600 flex items-center gap-1">
+                      <MapPin size={12} />
+                      Delivery from {eligibility.hub_name}
+                    </p>
                   )}
                   <div className="border-t border-stone-100 pt-3 flex justify-between font-black text-lg">
                     <span>Total</span>
@@ -397,6 +431,36 @@ export default function CartPage({ onNavigate }: CartPageProps) {
           <div className="max-w-xl mx-auto">
             <div className="bg-white rounded-3xl p-8 shadow-sm border border-stone-100">
               <h3 className="font-bold text-xl text-stone-800 mb-6">Delivery Details</h3>
+
+              {/* Delivery Zone Checker */}
+              <div className="mb-6">
+                <DeliveryZoneChecker
+                  onNavigate={onNavigate}
+                  onDeliveryChange={(charge, serviceable) => {
+                    setDeliveryCharge(charge);
+                    setIsServiceable(serviceable);
+                  }}
+                />
+              </div>
+
+              {/* Show warning if not serviceable */}
+              {selectedAddress && !isServiceable && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <p className="text-red-800 font-medium text-sm">
+                    Sorry, we currently do not deliver to this location.
+                  </p>
+                  <p className="text-red-600 text-xs mt-1">
+                    For bulk orders and special delivery requests, please{' '}
+                    <button
+                      onClick={() => onNavigate('contact')}
+                      className="underline font-medium"
+                    >
+                      contact us
+                    </button>
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-stone-700 mb-2">Full Name *</label>
@@ -414,7 +478,7 @@ export default function CartPage({ onNavigate }: CartPageProps) {
                   <input
                     type="tel"
                     value={form.phone}
-                    onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                    onChange={e => setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
                     placeholder="10-digit mobile number"
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                     required
@@ -445,10 +509,26 @@ export default function CartPage({ onNavigate }: CartPageProps) {
 
               <div className="mt-6 bg-stone-50 rounded-xl p-4 text-sm">
                 <div className="flex justify-between mb-2">
-                  <span className="text-stone-600">Order Total</span>
-                  <span className="font-black text-green-700 text-lg">₹{grandTotal}</span>
+                  <span className="text-stone-600">Subtotal</span>
+                  <span className="font-semibold">₹{total}</span>
                 </div>
-                <p className="text-xs text-stone-400">Secure payment via Razorpay</p>
+                <div className="flex justify-between mb-2">
+                  <span className="text-stone-600">Delivery</span>
+                  <span className={deliveryFee === 0 ? 'text-green-600 font-semibold' : 'font-semibold'}>
+                    {deliveryFee === 0 ? 'FREE' : `₹${deliveryFee}`}
+                  </span>
+                </div>
+                <div className="border-t border-stone-200 pt-2 mt-2 flex justify-between font-black text-lg">
+                  <span>Total</span>
+                  <span className="text-green-700">₹{grandTotal}</span>
+                </div>
+                {eligibility?.estimated_hours && (
+                  <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+                    <MapPin size={12} />
+                    Estimated delivery: {eligibility.estimated_hours <= 24 ? 'Next day' : `${Math.ceil(eligibility.estimated_hours / 24)} days`}
+                  </p>
+                )}
+                <p className="text-xs text-stone-400 mt-1">Secure payment via Razorpay</p>
               </div>
 
               <div className="flex gap-3 mt-6">
@@ -460,7 +540,7 @@ export default function CartPage({ onNavigate }: CartPageProps) {
                 </button>
                 <button
                   onClick={handlePlaceOrder}
-                  disabled={loading || !form.name || !form.phone || !form.address}
+                  disabled={loading || !form.name || !form.phone || !form.address || (selectedAddress && !isServiceable)}
                   className="flex-1 btn-primary py-3 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loading ? (
