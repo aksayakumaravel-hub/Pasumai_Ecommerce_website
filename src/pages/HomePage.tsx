@@ -8,23 +8,23 @@ type HomePageProps = {
 
 const testimonials = [
   {
-    name: 'Priya Ramesh',
+    name: 'Pooja',
     location: 'Chennai',
     rating: 5,
     text: 'The cottage stay was absolutely magical! Waking up to the sound of nature with fresh organic breakfast was a dream. Will definitely come back!',
     avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?w=100',
   },
   {
-    name: 'Karthik Selvam',
+    name: 'Aksaya',
     location: 'Coimbatore',
     rating: 5,
     text: 'The organic vegetables are incredibly fresh and flavorful. You can really taste the difference. The farm delivery service is punctual and reliable.',
     avatar: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?w=100',
   },
   {
-    name: 'Anitha Nair',
+    name: 'Anitha',
     location: 'Bangalore',
-    rating: 5,
+    rating: 4.6,
     text: 'Brought my family for the farm visit. Kids loved feeding the animals and learning about organic farming. A truly enriching experience for everyone.',
     avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?w=100',
   },
@@ -39,7 +39,7 @@ const features = [
 
 const products = [
   { name: 'Taiwan Pink Guava', price: '₹70/kg', img: 'https://images.pexels.com/photos/8668726/pexels-photo-8668726.jpeg' },
-  { name: 'Organic Farm Eggs', price: '₹180/tray', img: 'https://images.pexels.com/photos/162712/egg-white-food-protein-162712.jpeg' },
+  { name: 'Organic Farm Eggs', price: '₹25/egg', img: 'https://images.pexels.com/photos/162712/egg-white-food-protein-162712.jpeg' },
   { name: 'Fresh Spinach', price: '₹40/bunch', img: 'https://images.pexels.com/photos/2325843/pexels-photo-2325843.jpeg' },
   { name: 'Country Chicken', price: '₹750/kg', img: 'https://images.pexels.com/photos/37663514/pexels-photo-37663514.jpeg' },
 ];
