@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Star, Leaf, Home, Calendar, ArrowRight, Play, Quote, ShieldCheck, Truck, Award, Users, MapPin, Phone, Mail, Sprout, Heart } from 'lucide-react';
 import FarmBanner from '../components/FarmBanner';
-
+import aksayaImage from '../assets/Aksaya_K.jpeg';
 type HomePageProps = {
   onNavigate: (page: string) => void;
 };
@@ -19,7 +19,7 @@ const testimonials = [
     location: 'Coimbatore',
     rating: 5,
     text: 'The organic vegetables are incredibly fresh and flavorful. You can really taste the difference. The farm delivery service is punctual and reliable.',
-    avatar: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?w=100',
+    avatar: aksayaImage,
   },
   {
     name: 'Anitha',
