@@ -24,7 +24,7 @@ const testimonials = [
   {
     name: 'Anitha',
     location: 'Bangalore',
-    rating: 4.6,
+    rating: 5,
     text: 'Brought my family for the farm visit. Kids loved feeding the animals and learning about organic farming. A truly enriching experience for everyone.',
     avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?w=100',
   },
