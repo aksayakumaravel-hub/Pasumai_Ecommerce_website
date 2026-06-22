@@ -13,7 +13,7 @@ const testimonials = [
     location: 'Chennai',
     rating: 5,
     text: 'The cottage stay was absolutely magical! Waking up to the sound of nature with fresh organic breakfast was a dream. Will definitely come back!',
-    avatar: 'poojaImage',
+    avatar: poojaImage,
   },
   {
     name: 'Aksaya',
