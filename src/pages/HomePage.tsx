@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Star, Leaf, Home, Calendar, ArrowRight, Play, Quote, ShieldCheck, Truck, Award, Users, MapPin, Phone, Mail, Sprout, Heart } from 'lucide-react';
 import FarmBanner from '../components/FarmBanner';
 import aksayaImage from '../assets/Aksaya_K.jpeg';
+import poojaImage from '../assets/Pooja_K.jpeg';
 type HomePageProps = {
   onNavigate: (page: string) => void;
 };
@@ -12,7 +13,7 @@ const testimonials = [
     location: 'Chennai',
     rating: 5,
     text: 'The cottage stay was absolutely magical! Waking up to the sound of nature with fresh organic breakfast was a dream. Will definitely come back!',
-    avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?w=100',
+    avatar: 'poojaImage',
   },
   {
     name: 'Aksaya',
