@@ -38,10 +38,10 @@ const features = [
 ];
 
 const products = [
-  { name: 'Taiwan Pink Guava', price: '₹120/kg', img: 'https://images.pexels.com/photos/1120575/pexels-photo-1120575.jpeg' },
+  { name: 'Taiwan Pink Guava', price: '₹70/kg', img: 'https://images.pexels.com/photos/8668726/pexels-photo-8668726.jpeg' },
   { name: 'Organic Farm Eggs', price: '₹180/tray', img: 'https://images.pexels.com/photos/162712/egg-white-food-protein-162712.jpeg' },
   { name: 'Fresh Spinach', price: '₹40/bunch', img: 'https://images.pexels.com/photos/2325843/pexels-photo-2325843.jpeg' },
-  { name: 'Country Chicken', price: '₹350/kg', img: 'https://images.pexels.com/photos/2255935/pexels-photo-2255935.jpeg' },
+  { name: 'Country Chicken', price: '₹750/kg', img: 'https://images.pexels.com/photos/37663514/pexels-photo-37663514.jpeg' },
 ];
 
 export default function HomePage({ onNavigate }: HomePageProps) {
